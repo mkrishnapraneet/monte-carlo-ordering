@@ -82,10 +82,10 @@ def is_water(resname):
     return resname.strip().upper() in ("HOH", "WAT", "H2O", "SOL", "TIP3")
 
 # ── MD pipeline ──────────────────────────────────────────────────────────────
-def run_md(args, run_dir, seed, solv_seed):
+def run_md(args, out_dir, seed, solv_seed):
     """Full MD: solvate → minimize → equilibrate → production. Returns solvated_pdb path."""
 
-    os.makedirs(run_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
     # ── seeding ──────────────────────────────────────────────────────────────
     rng = random.Random(solv_seed)
@@ -97,13 +97,15 @@ def run_md(args, run_dir, seed, solv_seed):
     print(f"[run {args.index}] velocity seed={seed}  solv_seed={solv_seed}  "
           f"padding={base_padding:.3f} nm")
 
-    # ── file paths ───────────────────────────────────────────────────────────
-    input_pdb    = os.path.join(run_dir, "input.pdb")
-    solvated_pdb = os.path.join(run_dir, "solvated.pdb")
-    final_pdb    = os.path.join(run_dir, "final.pdb")
-    traj_dcd     = os.path.join(run_dir, "prod.dcd")
-    log_file     = os.path.join(run_dir, "prod.log")
-    checkpoint   = os.path.join(run_dir, "prod.chk")
+    # ── file paths (all flat in out_dir, index-suffixed) ─────────────────────
+    idx          = args.index
+    # input.pdb is shared across runs — no index suffix needed
+    input_pdb    = os.path.join(out_dir, "input.pdb")
+    solvated_pdb = os.path.join(out_dir, f"solvated_{idx}.pdb")
+    final_pdb    = os.path.join(out_dir, f"final_{idx}.pdb")
+    traj_dcd     = os.path.join(out_dir, f"prod_{idx}.dcd")
+    log_file     = os.path.join(out_dir, f"prod_{idx}.log")
+    checkpoint   = os.path.join(out_dir, f"prod_{idx}.chk")
 
     # ── input PDB ────────────────────────────────────────────────────────────
     if not os.path.exists(input_pdb):
@@ -119,7 +121,7 @@ def run_md(args, run_dir, seed, solv_seed):
     margin = 0.05
 
     if os.path.exists(solvated_pdb):
-        print(f"[run {args.index}] Re-using existing solvated.pdb")
+        print(f"[run {args.index}] Re-using existing {solvated_pdb}")
         tmp = app.PDBFile(solvated_pdb)
         modeller = app.Modeller(tmp.topology, tmp.positions)
     else:
@@ -235,14 +237,14 @@ def run_md(args, run_dir, seed, solv_seed):
 
 
 # ── unwrap / center pipeline ─────────────────────────────────────────────────
-def run_unwrap(run_dir, solvated_pdb, traj_dcd, center=True,
+def run_unwrap(out_dir, idx, solvated_pdb, traj_dcd, center=True,
                solute_sel="not resname TIP3 WAT SOL HOH"):
     """Unwrap solute trajectory with MDAnalysis and write solute-only DCD."""
     import MDAnalysis as mda
     from MDAnalysis.transformations import unwrap, center_in_box
 
-    out_dcd = os.path.join(run_dir, "unwrapped_prod.dcd")
-    out_pdb = os.path.join(run_dir, "unwrapped_final.pdb")
+    out_dcd = os.path.join(out_dir, f"unwrapped_{idx}.dcd")
+    out_pdb = os.path.join(out_dir, f"unwrapped_{idx}.pdb")
 
     print(f"[unwrap] Loading {solvated_pdb} + {traj_dcd} ...")
     u = mda.Universe(solvated_pdb, traj_dcd)
@@ -308,14 +310,14 @@ def main():
     if args.solv_seed is None:
         args.solv_seed = random.randint(0, 2**31 - 1)
 
-    run_dir = os.path.join(args.outdir, f"run_{args.index}")
-    print(f"=== Run {args.index} | dir: {run_dir} ===")
+    out_dir = args.outdir
+    print(f"=== Run {args.index} | dir: {out_dir}/ (index suffix: _{args.index}) ===")
     print(f"    seed={args.seed}  solv_seed={args.solv_seed}")
 
     # ── MD ───────────────────────────────────────────────────────────────────
     for attempt in range(5):
         try:
-            solvated_pdb, traj_dcd = run_md(args, run_dir, args.seed, args.solv_seed)
+            solvated_pdb, traj_dcd = run_md(args, out_dir, args.seed, args.solv_seed)
             break
         except Exception as e:
             print(f"[run {args.index}] MD attempt {attempt+1} failed: {e}")
@@ -327,7 +329,7 @@ def main():
     if not args.no_unwrap:
         try:
             run_unwrap(
-                run_dir, solvated_pdb, traj_dcd,
+                out_dir, args.index, solvated_pdb, traj_dcd,
                 center     = not args.no_center,
                 solute_sel = args.solute_sel,
             )
