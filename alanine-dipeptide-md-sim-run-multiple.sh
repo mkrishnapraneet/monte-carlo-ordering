@@ -25,10 +25,10 @@ PROD_NS="${2:-2.0}"
 EQUIL_NS="${3:-0.2}"
 OUTDIR="${4:-alanine-dipeptide}"
 
-SCRIPT="$(dirname "$0")/ala_run.py"
+SCRIPT="$(dirname "$0")/alanine-dipeptide-md-sim.py"
 
 if [[ ! -f "$SCRIPT" ]]; then
-    echo "ERROR: ala_run.py not found at $SCRIPT"
+    echo "ERROR: alanine-dipeptide-md-sim.py not found at $SCRIPT"
     exit 1
 fi
 
@@ -84,6 +84,10 @@ for i in "${!PIDS[@]}"; do
         (( FAILED++ )) || true
     fi
 done
+
+# remove all solvated_*.pdb files to save space
+find "$OUTDIR" -name "solvated_*.pdb" -type f -delete
+find "$OUTDIR" -name "*.chk" -type f -delete
 
 echo ""
 if [[ $FAILED -eq 0 ]]; then

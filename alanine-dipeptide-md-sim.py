@@ -26,6 +26,7 @@ import sys
 import math
 import random
 import numpy as np
+import time
 
 import openmm
 import openmm.app as app
@@ -228,10 +229,10 @@ def run_md(args, out_dir, seed, solv_seed):
     simulation.step(prod_steps)
     print(f"[run {args.index}] Production done.")
 
-    state = simulation.context.getState(getPositions=True)
-    with open(final_pdb, "w") as f:
-        app.PDBFile.writeFile(simulation.topology, state.getPositions(), f)
-    print(f"[run {args.index}] Wrote {final_pdb}")
+    # state = simulation.context.getState(getPositions=True)
+    # with open(final_pdb, "w") as f:
+    #     app.PDBFile.writeFile(simulation.topology, state.getPositions(), f)
+    # print(f"[run {args.index}] Wrote {final_pdb}")
 
     return solvated_pdb, traj_dcd
 
@@ -267,11 +268,11 @@ def run_unwrap(out_dir, idx, solvated_pdb, traj_dcd, center=True,
             W.write(solute)
 
     # write final frame PDB
-    with mda.Writer(out_pdb, solute.n_atoms) as P:
-        P.write(solute)
+    # with mda.Writer(out_pdb, solute.n_atoms) as P:
+        # P.write(solute)
 
     print(f"[unwrap] Done. Solute DCD: {out_dcd}")
-    print(f"[unwrap]       Final PDB:  {out_pdb}")
+    # print(f"[unwrap]       Final PDB:  {out_pdb}")
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -315,15 +316,17 @@ def main():
     print(f"    seed={args.seed}  solv_seed={args.solv_seed}")
 
     # ── MD ───────────────────────────────────────────────────────────────────
-    for attempt in range(5):
+    num_md_attempts = 20
+    for attempt in range(num_md_attempts):
         try:
             solvated_pdb, traj_dcd = run_md(args, out_dir, args.seed, args.solv_seed)
             break
         except Exception as e:
             print(f"[run {args.index}] MD attempt {attempt+1} failed: {e}")
-            if attempt == 4:
+            if attempt == num_md_attempts - 1:
                 print(f"[run {args.index}] All MD attempts failed. Exiting.")
                 sys.exit(1)
+            time.sleep(1)
 
     # ── unwrap ───────────────────────────────────────────────────────────────
     if not args.no_unwrap:
@@ -333,6 +336,9 @@ def main():
                 center     = not args.no_center,
                 solute_sel = args.solute_sel,
             )
+            # delete the original wrapped DCD to save space
+            os.remove(traj_dcd)
+            os.remove(solvated_pdb)
         except ImportError:
             print("[unwrap] MDAnalysis not found — skipping unwrap step.")
         except Exception as e:
